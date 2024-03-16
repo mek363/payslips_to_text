@@ -18,26 +18,57 @@ __version__ = '1.0.0'
 __email__ = 'dev@awurster.com'
 __status__ = 'dev'
 
+####### REGEX DEFINITIONS #######
+# Examples of PDF raw text precede regular expressions:
 
-_RE_PAID_ON_DATE = re.compile('Paid on Date\s+(?P<paid_on_date>\d\d\/\d\d\/\d\d)')
-_RE_DONATION = re.compile('DA DONATION CHARITABLE\s+\$\s+(?P<donation>[\d\,\.]{1,})')
-_RE_TAXABLE_GROSS_EARNINGS = re.compile(
-    'TAXABLE GROSS EARNINGS\s+\$\s+(?P<taxable_gross_earnings>[\d\,\.]{1,})'
-    )
-_RE_TOTAL_TAX_DEDUCTED = re.compile('TOTAL TAX DEDUCTED\s+\$\s+(?P<total_tax_deducted>[\d\,\.]{1,})')
-_RE_TOTAL_NET_PAY = re.compile('TOTAL NET PAY.+\$\s+(?P<total_net_pay>[\d\,\.]{1,})')
-_RE_SUPERANNUATION = re.compile(
-    'SS Superannuation\s+(?P<percentage>\d+\.\d+)\%\s+\$\s+(?P<superannuation>[\d\,\.]{1,})'
-    )
+# Gross Pay Pre Tax Deductions Employee Taxes Post Tax Deductions Net Pay
+# Current 6,527.50 542.11 2,115.06 130.55 3,739.78
+_RE_GROSS_PAY = re.compile('Current (?P<gross_pay>[\d\,\.]{1,}) [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,}')
+_RE_NET_PAY = re.compile('Current [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} (?P<net_pay>[\d\,\.]{1,})')
+
+# Name Company Employee ID Pay Period Begin Pay Period End Check Date Check Number
+# Matthew Kramer Medtronic Inc 312713 03/12/2022 03/25/2022 04/01/2022
+_RE_CHECK_DATE = re.compile('Matthew Kramer Medtronic Inc 312713 \d\d\/\d\d\/\d\d\d\d \d\d\/\d\d\/\d\d\d\d (?P<check_date>\d\d\/\d\d\/\d\d\d\d)')
+
+# Employee Taxes
+# Description Amount YTD
+# OASDI 397.13 2,794.53
+# Medicare 92.88 653.56
+# Federal Withholding 1,218.05 8,578.47
+# State Tax - MN 407.00 2,865.00
+_RE_OASDI = re.compile('OASDI (?P<oasdi>[\d\,\.]{1,})')
+_RE_MEDICARE = re.compile('Medicare (?P<medicare>[\d\,\.]{1,})')
+_RE_FED_WITHHOLD = re.compile('Federal Withholding (?P<fed_withhold>[\d\,\.]{1,})')
+_RE_STATE_WITHHOLD = re.compile('State Tax - MN (?P<state_withhold>[\d\,\.]{1,})')
+
+# Pre Tax Deductions
+# Description Amount YTD
+# 401(k) 391.65 2,741.55
+# Dental Pre 55.38 387.66
+# Medical Pre 95.08 665.56
+_RE_401K = re.compile('401\(k\) (?P<k401>[\d\,\.]{1,})')
+_RE_DENTAL = re.compile('Dental Pre (?P<dental>[\d\,\.]{1,})')
+_RE_MEDICAL = re.compile('Medical Pre (?P<medical>[\d\,\.]{1,})')
+
+# Post Tax Deductions
+# Description Amount YTD
+# Fitness Center 4.62 4.62
+_RE_FITNESS = re.compile('Fitness Center (?P<fitness>[\d\,\.]{1,})')
 
 _FIELDNAMES = [
-    'paid_on_date',
-    'donation',
-    'taxable_gross_earnings',
-    'total_tax_deducted',
-    'total_net_pay',
-    'superannuation'
+    'gross_pay',
+    'net_pay',
+    'check_date',
+    'oasdi',
+    'medicare',
+    'fed_withhold',
+    'state_withhold',
+    'k401',
+    'dental',
+    'medical',
+    'fitness'
 ]
+####### END REGEX DEFINITIONS #######
 
 # Configure root level logger
 logger = logging.getLogger(__name__)
@@ -75,7 +106,7 @@ def write_results_to_file(payslips, outfile, format):
             )
             writer.writeheader()
             rows = sorted(valid_slips,
-                key=lambda d: datetime.strptime(d['paid_on_date'], '%d/%m/%y')
+                key=lambda d: datetime.strptime(d['check_date'], '%d/%m/%y')
                 )
             writer.writerows(rows)
         else:
@@ -121,31 +152,52 @@ def parse_payslip(pdf):
 
     payslip = {}
     payslip['data'] = []
+    pgnum = 1
     for page in pdf:
+        filename = 'page ' + str(pgnum) + ".txt"
+        with open(filename, 'w') as f:
+            print(page, file=f)
         payslip['data'].extend(page.split('\n'))
+        pgnum = pgnum + 1
 
     # print(payslip)
     results = {}
     for line in payslip['data']:
-        paid_on_date = _RE_PAID_ON_DATE.search(line)
-        donation = _RE_DONATION.search(line)
-        taxable_gross_earnings = _RE_TAXABLE_GROSS_EARNINGS.search(line)
-        total_tax_deducted = _RE_TOTAL_TAX_DEDUCTED.search(line)
-        total_net_pay = _RE_TOTAL_NET_PAY.search(line)
-        superannuation = _RE_SUPERANNUATION.search(line)
 
-        if paid_on_date:
-            results['paid_on_date'] = paid_on_date.group('paid_on_date')
-        if donation:
-            results['donation'] = donation.group('donation')
-        if taxable_gross_earnings:
-            results['taxable_gross_earnings'] = taxable_gross_earnings.group('taxable_gross_earnings')
-        if total_tax_deducted:
-            results['total_tax_deducted'] = total_tax_deducted.group('total_tax_deducted')
-        if total_net_pay:
-            results['total_net_pay'] = total_net_pay.group('total_net_pay')
-        if superannuation:
-            results['superannuation'] = superannuation.group('superannuation')
+        gross_pay = _RE_GROSS_PAY.search(line)
+        net_pay = _RE_NET_PAY.search(line)
+        check_date = _RE_CHECK_DATE.search(line)
+        oasdi = _RE_OASDI.search(line)
+        medicare = _RE_MEDICARE.search(line)
+        fed_withhold = _RE_FED_WITHHOLD.search(line)
+        state_withhold = _RE_STATE_WITHHOLD.search(line)
+        k401 = _RE_401K.search(line)
+        dental = _RE_DENTAL.search(line)
+        medical = _RE_MEDICAL.search(line)
+        fitness = _RE_FITNESS.search(line)
+
+        if gross_pay:
+            results['gross_pay'] = gross_pay.group('gross_pay')
+        if net_pay:
+            results['net_pay'] = net_pay.group('net_pay')
+        if check_date:
+            results['check_date'] = check_date.group('check_date')
+        if oasdi:
+            results['oasdi'] = oasdi.group('oasdi')
+        if medicare:
+            results['medicare'] = medicare.group('medicare')
+        if fed_withhold:
+            results['fed_withhold'] = fed_withhold.group('fed_withhold')
+        if state_withhold:
+            results['state_withhold'] = state_withhold.group('state_withhold')
+        if k401:
+            results['k401'] = k401.group('k401')
+        if dental:
+            results['dental'] = dental.group('dental')
+        if medical:
+            results['medical'] = medical.group('medical')
+        if fitness:
+            results['fitness'] = fitness.group('fitness')
 
     payslip['results'] = results
 
@@ -171,7 +223,7 @@ def get_payslips_from_pdfs(pdfs):
         payslip['file'] = pdf
         with open(pdf,'rb') as pf:
             try:
-                p = pdftotext.PDF(pf)
+                p = pdftotext.PDF(pf, raw=True)
             except Exception as e:
                 logger.debug('Exception scanning PDF document: %s' % str(e))
                 payslip['data'] = []
