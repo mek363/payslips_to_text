@@ -11,11 +11,17 @@ import re
 
 import pdftotext
 
+# Derived from payslips_to_text
+# __author__ = 'Andrew Wurster'
+# __license__ = 'GPL'
+# __version__ = '1.0.0'
+# __email__ = 'dev@awurster.com'
+# __status__ = 'dev'
 
-__author__ = 'Andrew Wurster'
+__author__ = 'Mat Kramer'
 __license__ = 'GPL'
 __version__ = '1.0.0'
-__email__ = 'dev@awurster.com'
+__email__ = 'mat@vyperhelp.com'
 __status__ = 'dev'
 
 ####### REGEX DEFINITIONS #######
@@ -55,6 +61,7 @@ _RE_MEDICAL = re.compile('Medical Pre (?P<medical>[\d\,\.]{1,})')
 # Fitness Center 4.62 4.62
 _RE_FITNESS = re.compile('Fitness Center (?P<fitness>[\d\,\.]{1,})')
 
+# Fields that may be present
 _FIELDNAMES = [
     'gross_pay',
     'net_pay',
@@ -68,6 +75,13 @@ _FIELDNAMES = [
     'medical',
     'fitness'
 ]
+
+# Fields that MUST be present
+_REQUIRED_FIELDNAMES = [
+    'gross_pay',
+    'net_pay',
+    'check_date'
+]
 ####### END REGEX DEFINITIONS #######
 
 # Configure root level logger
@@ -75,18 +89,22 @@ logger = logging.getLogger(__name__)
 ch = logging.StreamHandler()
 logger.addHandler(ch)
 
+# Parse float value from amount in a dictionary
+def amt(d, i):
+    return float(d[i].replace(",",""))
+
 def write_results_to_file(payslips, outfile, format):
     """
-    Given a list of JSON LDAP search results, writes them to a file.
+    Given a list of payslips, writes them to a file.
 
     :param payslips: List of dictionaries containing payslip data
     :param outfile: Destination
-    :param format: choose CSV or JSON output, defaults to CSV
+    :param format: choose QIF, CSV or JSON output, defaults to CSV
     :return: None
     """
 
     valid_slips = [p['results'] for p in payslips if p['status'] == 'valid']
-    logger.info('Found %s valid payslip objects from %s total files scanned.' % (len(valid_slips), len(payslips)))
+    logger.info('Found %s valid payslip objects from %s total pages scanned.' % (len(valid_slips), len(payslips)))
 
     of = None
     if outfile:
@@ -106,17 +124,80 @@ def write_results_to_file(payslips, outfile, format):
             )
             writer.writeheader()
             rows = sorted(valid_slips,
-                key=lambda d: datetime.strptime(d['check_date'], '%d/%m/%y')
+                key=lambda d: datetime.strptime(d['check_date'], '%m/%d/%Y')
                 )
             writer.writerows(rows)
         else:
             logger.error('No valid payslips found')
             sys.exit(1)
 
+    elif format == 'qif':
+        # Create a single transaction for each payslip, using subcategories
+        import quiffen
+        logger.info('Generating QIF transactions')
+
+        # Create QIF object and define account
+        qif = quiffen.Qif()
+        acc = quiffen.Account(name = 'Checking')
+        qif.add_account(acc)
+        mdt = 'Medtronic'
+
+        # Define categories for split
+        cat_salary = quiffen.Category(name = 'Salary')
+        cat_oasdi = quiffen.Category(name = 'Payroll Taxes - Social Security')
+        cat_medicare = quiffen.Category(name = 'Payroll Taxes - Medicare')
+        cat_fed_withhold = quiffen.Category(name = 'Payroll Taxes - Federal')
+        cat_state_withhold = quiffen.Category(name = 'Payroll Taxes - State')
+        cat_k401 = quiffen.Category(name = '[Medtronic 401k]')
+        cat_dental = quiffen.Category(name = 'Pre Tax - Dent Ins')
+        cat_medical = quiffen.Category(name = 'Pre Tax - Med Ins')
+        cat_fitness = quiffen.Category(name = 'Fitness')
+        qif.add_category(cat_salary)
+        qif.add_category(cat_oasdi)
+        qif.add_category(cat_medicare)
+        qif.add_category(cat_fed_withhold)
+        qif.add_category(cat_state_withhold)
+        qif.add_category(cat_k401)
+        qif.add_category(cat_dental)
+        qif.add_category(cat_medical)
+        qif.add_category(cat_fitness)
+
+        # Create transaction for each payslip
+        for s in valid_slips:
+            d = datetime.strptime(s['check_date'], '%m/%d/%Y')
+            subs = []
+            subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_salary, amount = amt(s, 'gross_pay')))
+            if 'oasdi' in s:
+                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_oasdi, amount = -amt(s, 'oasdi')))
+            if 'medicare' in s:
+                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_medicare, amount = -amt(s, 'medicare')))
+            if 'fed_withhold' in s:
+                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_fed_withhold, amount = -amt(s, 'fed_withhold')))
+            if 'state_withhold' in s:
+                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_state_withhold, amount = -amt(s, 'state_withhold')))
+            if 'k401' in s:
+                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_k401, amount = -amt(s, 'k401')))
+            if 'dental' in s:
+                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_dental, amount = -amt(s, 'dental')))
+            if 'medical' in s:
+                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_medical, amount = -amt(s, 'medical')))
+            if 'fitness' in s:
+                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_fitness, amount = -amt(s, 'fitness')))
+            tr = quiffen.Transaction(
+                payee = mdt, 
+                date = d,
+                amount = amt(s, 'net_pay'),
+                splits = subs)
+            acc.add_transaction(tr, header='Bank')
+
+        # write results to a file
+        of.write(qif.to_qif())
+
     elif format == 'json':
         import json
         for l in valid_slips:
             of.write(f'{json.dumps(l)}\n')
+
     else:
         logger.warn('Unrecognised format %s.' % format)
         logger.debug('Dumping raw results for all payslips: %s' % payslips)
@@ -142,27 +223,15 @@ def get_pdf_files(input_dir, pattern):
             (pattern, input_dir))
         sys.exit(1)
 
-def parse_payslip(pdf):
+def parse_payslip_page(lines):
     """
-    Parse PDF lines from pdftotext and return dictionary of payslip data.
-    :param pdf: PDF object to parse.
-    :return results: payslip data
+    Parse PDF lines from a pdftotext page and return dictionary of payslip data.
+    :param lines: List of lines to parse.
+    :return results: list of payslip data
     """
-    # sigh...
 
-    payslip = {}
-    payslip['data'] = []
-    pgnum = 1
-    for page in pdf:
-        filename = 'page ' + str(pgnum) + ".txt"
-        with open(filename, 'w') as f:
-            print(page, file=f)
-        payslip['data'].extend(page.split('\n'))
-        pgnum = pgnum + 1
-
-    # print(payslip)
     results = {}
-    for line in payslip['data']:
+    for line in lines:
 
         gross_pay = _RE_GROSS_PAY.search(line)
         net_pay = _RE_NET_PAY.search(line)
@@ -199,38 +268,57 @@ def parse_payslip(pdf):
         if fitness:
             results['fitness'] = fitness.group('fitness')
 
-    payslip['results'] = results
+    return results
 
-    if all (k in results for k in _FIELDNAMES):
-        payslip['status'] = 'valid'
-        logger.debug('Valid payslip data found: %s' % payslip)
-    else:
-        payslip['status'] = 'invalid'
-        logger.debug('Payslip fields missing from data: %s' % payslip)
+def parse_payslip_doc(pdf):
+    """
+    Parse PDF pages from pdftotext and return list of dictionary of payslip data.
+    :param pdf: PDF object to parse.
+    :return results: list of payslip data
+    """
 
-    return payslip
+    payslips = []
+    pgnum = 0
+    for page in pdf:
+        payslip = {}
+        payslip['data'] = []
+        filename = 'page ' + str(pgnum) + ".txt"
+        with open(filename, 'w') as f:
+            print(page, file=f)
+        payslip['data'].extend(page.split('\n'))
+        payslip['status'] = 'empty'
+        payslips.append(payslip)
+        pgnum = pgnum + 1
+    logger.info('Found %s pages', pgnum)
+
+    for p in payslips:
+        p['results'] = parse_payslip_page(p['data'])
+
+        if all (k in p['results'] for k in _REQUIRED_FIELDNAMES):
+            p['status'] = 'valid'
+            logger.debug('Valid payslip data found: %s' % p)
+        else:
+            p['status'] = 'invalid'
+            logger.debug('Payslip fields missing from data: %s' % p)
+
+    return payslips
 
 def get_payslips_from_pdfs(pdfs):
     """
     Convert list of PDFs to text and scan them for payslip data.
     :param pdfs: List of valid PDF files to be parsed
-    :param glob_pattern: Glob pattern to match for valid PDF files
     :return payslips: List of dictionaries of valid payslip data
     """
     payslips = []
     for pdf in pdfs:
-        payslip = {}
-        payslip['file'] = pdf
         with open(pdf,'rb') as pf:
             try:
+                logger.info('Scanning %s', pf.name)
                 p = pdftotext.PDF(pf, raw=True)
             except Exception as e:
                 logger.debug('Exception scanning PDF document: %s' % str(e))
-                payslip['data'] = []
-                payslip['status'] = 'failed'
         if p:
-            payslip = parse_payslip(p)
-        payslips.append(payslip)
+            payslips.extend(parse_payslip_doc(p))
 
     return payslips
 
@@ -240,7 +328,7 @@ def main(args):
     :param args: Program arguments provided to the Python script
     :return: None
     """
-
+    logger.info('- - - - P A Y S L I P - - - -')
     logger.debug('Invoked program with arguments: %s' % str(args))
 
     pdfs = get_pdf_files(args.input_dir, args.pattern)
@@ -264,7 +352,7 @@ def parse_args():
     """
 
     parser = argparse.ArgumentParser(
-        description='Convert PDFs of payslips into parsable CSV output.')
+        description='Convert PDFs of payslips into QIF, CSV or JSON.')
 
     # The directory containing input PDFs.
     parser.add_argument('-i',
