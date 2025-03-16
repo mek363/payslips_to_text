@@ -1,2 +1,3 @@
 pdftotext
 quiffen
+pandas==2.2.3

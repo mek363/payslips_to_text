@@ -29,12 +29,14 @@ __status__ = 'dev'
 
 # Gross Pay Pre Tax Deductions Employee Taxes Post Tax Deductions Net Pay
 # Current 6,527.50 542.11 2,115.06 130.55 3,739.78
-_RE_GROSS_PAY = re.compile('Current (?P<gross_pay>[\d\,\.]{1,}) [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,}')
-_RE_NET_PAY = re.compile('Current [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} (?P<net_pay>[\d\,\.]{1,})')
+_RE_GROSS_PAY = re.compile(r'Current (?P<gross_pay>[\d\,\.]{1,}) [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,}')
+_RE_NET_PAY = re.compile(r'Current [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} (?P<net_pay>[\d\,\.]{1,})')
 
 # Name Company Employee ID Pay Period Begin Pay Period End Check Date Check Number
 # Matthew Kramer Medtronic Inc 312713 03/12/2022 03/25/2022 04/01/2022
-_RE_CHECK_DATE = re.compile('Matthew Kramer Medtronic Inc 312713 \d\d\/\d\d\/\d\d\d\d \d\d\/\d\d\/\d\d\d\d (?P<check_date>\d\d\/\d\d\/\d\d\d\d)')
+_RE_CHECK_DATE = re.compile(r'Matthew Kramer Medtronic Inc 312713 \d\d\/\d\d\/\d\d\d\d \d\d\/\d\d\/\d\d\d\d (?P<check_date>\d\d\/\d\d\/\d\d\d\d)')
+
+# Note: trailing \d in each of these regex to make sure we don't match the YTD value if Amount is not present
 
 # Employee Taxes
 # Description Amount YTD
@@ -42,24 +44,24 @@ _RE_CHECK_DATE = re.compile('Matthew Kramer Medtronic Inc 312713 \d\d\/\d\d\/\d\
 # Medicare 92.88 653.56
 # Federal Withholding 1,218.05 8,578.47
 # State Tax - MN 407.00 2,865.00
-_RE_OASDI = re.compile('OASDI (?P<oasdi>[\d\,\.]{1,})')
-_RE_MEDICARE = re.compile('Medicare (?P<medicare>[\d\,\.]{1,})')
-_RE_FED_WITHHOLD = re.compile('Federal Withholding (?P<fed_withhold>[\d\,\.]{1,})')
-_RE_STATE_WITHHOLD = re.compile('State Tax - MN (?P<state_withhold>[\d\,\.]{1,})')
+_RE_OASDI = re.compile(r'OASDI (?P<oasdi>[\d\,\.]{1,}) \d')
+_RE_MEDICARE = re.compile(r'Medicare (?P<medicare>[\d\,\.]{1,}) \d')
+_RE_FED_WITHHOLD = re.compile(r'Federal Withholding (?P<fed_withhold>[\d\,\.]{1,}) \d')
+_RE_STATE_WITHHOLD = re.compile(r'State Tax - MN (?P<state_withhold>[\d\,\.]{1,}) \d')
 
 # Pre Tax Deductions
 # Description Amount YTD
 # 401(k) 391.65 2,741.55
 # Dental Pre 55.38 387.66
 # Medical Pre 95.08 665.56
-_RE_401K = re.compile('401\(k\) (?P<k401>[\d\,\.]{1,})')
-_RE_DENTAL = re.compile('Dental Pre (?P<dental>[\d\,\.]{1,})')
-_RE_MEDICAL = re.compile('Medical Pre (?P<medical>[\d\,\.]{1,})')
+_RE_401K = re.compile(r'401\(k\) (?P<k401>[\d\,\.]{1,}) \d')
+_RE_DENTAL = re.compile(r'Dental Pre (?P<dental>[\d\,\.]{1,}) \d')
+_RE_MEDICAL = re.compile(r'Medical Pre (?P<medical>[\d\,\.]{1,}) \d')
 
 # Post Tax Deductions
 # Description Amount YTD
 # Fitness Center 4.62 4.62
-_RE_FITNESS = re.compile('Fitness Center (?P<fitness>[\d\,\.]{1,})')
+_RE_FITNESS = re.compile(r'Fitness Center (?P<fitness>[\d\,\.]{1,}) \d')
 
 # Fields that may be present
 _FIELDNAMES = [
@@ -144,10 +146,10 @@ def write_results_to_file(payslips, outfile, format):
 
         # Define categories for split
         cat_salary = quiffen.Category(name = 'Salary')
-        cat_oasdi = quiffen.Category(name = 'Payroll Taxes - Social Security')
-        cat_medicare = quiffen.Category(name = 'Payroll Taxes - Medicare')
-        cat_fed_withhold = quiffen.Category(name = 'Payroll Taxes - Federal')
-        cat_state_withhold = quiffen.Category(name = 'Payroll Taxes - State')
+        cat_oasdi = quiffen.Category(name = 'Payroll - Social Security')
+        cat_medicare = quiffen.Category(name = 'Payroll - Medicare')
+        cat_fed_withhold = quiffen.Category(name = 'Payroll - Federal')
+        cat_state_withhold = quiffen.Category(name = 'Payroll - State')
         cat_k401 = quiffen.Category(name = '[Medtronic 401k]')
         cat_dental = quiffen.Category(name = 'Pre Tax - Dent Ins')
         cat_medical = quiffen.Category(name = 'Pre Tax - Med Ins')
