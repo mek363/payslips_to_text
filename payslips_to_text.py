@@ -34,7 +34,7 @@ logger.addHandler(ch)
 def amt(d, i):
     return float(d[i].replace(",",""))
 
-def write_results_to_file(payslips, outfile, format, field_names, quiffen_categories):
+def write_results_to_file(payslips, outfile, format, field_names, quiffen_categories, employer_name):
     """
     Given a list of payslips, writes them to a file.
 
@@ -43,6 +43,7 @@ def write_results_to_file(payslips, outfile, format, field_names, quiffen_catego
     :param format: choose QIF, CSV or JSON output, defaults to CSV
     :param field_names: List of field names to include in the output
     :param quiffen_categories: Dictionary of field names to Quiffen categories
+    :param employer_name: Name of the employer for the QIF transactions
     :return: None
     """
 
@@ -83,7 +84,6 @@ def write_results_to_file(payslips, outfile, format, field_names, quiffen_catego
         qif = quiffen.Qif()
         acc = quiffen.Account(name = 'Checking')
         qif.add_account(acc)
-        mdt = 'Medtronic'
 
         # Define categories for split
         categories = {field: quiffen.Category(name=category) for field, category in quiffen_categories.items()}
@@ -94,19 +94,18 @@ def write_results_to_file(payslips, outfile, format, field_names, quiffen_catego
         for s in valid_slips:
             d = datetime.strptime(s['check_date'], '%m/%d/%Y')
             subs = []
-            subs.append(quiffen.Transaction(payee = mdt, date = d, category = categories['gross_pay'], amount = amt(s, 'gross_pay')))
+            subs.append(quiffen.Transaction(payee = employer_name, date = d, category = categories['gross_pay'], amount = amt(s, 'gross_pay')))
             for field in field_names:
                 if field in s and field != 'gross_pay' and field != 'net_pay' and field != 'check_date':
-                    subs.append(quiffen.Transaction(payee = mdt, date = d, category = categories[field], amount = -amt(s, field)))
+                    subs.append(quiffen.Transaction(payee = employer_name, date = d, category = categories[field], amount = -amt(s, field)))
             tr = quiffen.Transaction(
-                payee = mdt, 
+                payee = employer_name, 
                 date = d,
                 amount = amt(s, 'net_pay'),
                 splits = subs)
             acc.add_transaction(tr, header='Bank')
 
         # write results to a file
-        print(qif)
         of.write(qif.to_qif())
 
     elif format == 'json':
@@ -147,26 +146,27 @@ def load_patterns(pattern_file):
     """
     with open(pattern_file, 'r') as f:
         patterns = json.load(f)
-    compiled_patterns = {p['field_name']: re.compile(p['pattern']) for p in patterns}
+    compiled_patterns = {p['field_name']: re.compile(p['pattern'], re.MULTILINE) for p in patterns}
     field_names = [p['field_name'] for p in patterns]
     required_field_names = [p['field_name'] for p in patterns if p['required']]
     quiffen_categories = {p['field_name']: p['quiffen_category'] for p in patterns}
     return compiled_patterns, field_names, required_field_names, quiffen_categories
 
-def parse_payslip_page(lines, patterns):
+def parse_payslip_page(body, patterns):
     """
-    Parse PDF lines from a pdftotext page and return dictionary of payslip data.
-    :param lines: List of lines to parse.
+    Parse PDF text from a pdftotext page and return dictionary of payslip data.
+    :param body: Body text to parse.
     :param patterns: Dictionary of compiled regex patterns
     :return results: list of payslip data
     """
 
     results = {}
-    for line in lines:
-        for field, pattern in patterns.items():
-            match = pattern.search(line)
-            if match:
-                results[field] = match.group(field)
+    for field, pattern in patterns.items():
+        match = pattern.search(body)
+        if match:
+            results[field] = match.group(field)
+            # replace blanks with a period, since some PDFs cannot translate periods
+            results[field] = results[field].replace(" ", ".")
 
     return results
 
@@ -183,11 +183,10 @@ def parse_payslip_doc(pdf, patterns, required_field_names):
     pgnum = 0
     for page in pdf:
         payslip = {}
-        payslip['data'] = []
+        payslip['data'] = page
         filename = 'page ' + str(pgnum) + ".txt"
         with open(filename, 'w') as f:
             print(page, file=f)
-        payslip['data'].extend(page.split('\n'))
         payslip['status'] = 'empty'
         payslips.append(payslip)
         pgnum = pgnum + 1
@@ -246,7 +245,8 @@ def main(args):
         args.output_file,
         args.format.lower(),
         field_names,
-        quiffen_categories
+        quiffen_categories,
+        args.employer_name
         )
 
     sys.exit()
@@ -302,6 +302,12 @@ def parse_args():
                         '--pattern-file',
                         required=True,
                         help='The JSON file containing regex patterns.')
+
+    # The employer name for the QIF transactions.
+    parser.add_argument('-e',
+                        '--employer-name',
+                        required=True,
+                        help='The name of the employer for the QIF transactions.')
 
     args = parser.parse_args()
 

@@ -1,0 +1,44 @@
+[
+    {
+        "pattern": "900 OCEAN ST\\n\\$(?P<gross_pay>\\d+ \\d+)",
+        "field_name": "gross_pay",
+        "required": true,
+        "quiffen_category": "Salary - Anne"
+    },
+    {
+        "pattern": "COMPANY PH#:\\(651\\) 778-1000\\n\\$(?P<net_pay>\\d+ \\d+)",
+        "field_name": "net_pay",
+        "required": true,
+        "quiffen_category": "Net Pay"
+    },
+    {
+        "pattern": "Pay Date: (?P<check_date>\\d\\d\\/\\d\\d\\/\\d\\d\\d\\d)",
+        "field_name": "check_date",
+        "required": true,
+        "quiffen_category": "Check Date"
+    },
+    {
+        "pattern": "Gross Pay\\n-(?P<oasdi>\\d+ \\d+)",
+        "field_name": "oasdi",
+        "required": false,
+        "quiffen_category": "Payroll Anne - Social Security"
+    },
+    {
+        "pattern": "Statutory\\n-(?P<medicare>\\d+ \\d+)",
+        "field_name": "medicare",
+        "required": false,
+        "quiffen_category": "Payroll Anne - Medicare"
+    },
+    {
+        "pattern": "Exemptions/Allowances:\\n-(?P<fed_withhold>\\d+ \\d+)",
+        "field_name": "fed_withhold",
+        "required": false,
+        "quiffen_category": "Payroll Anne - Federal"
+    },
+    {
+        "pattern": "Federal Income Tax\\n-(?P<state_withhold>\\d+ \\d+)",
+        "field_name": "state_withhold",
+        "required": false,
+        "quiffen_category": "Payroll Anne - State"
+    }
+]
