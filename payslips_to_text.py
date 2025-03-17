@@ -8,6 +8,7 @@ import glob
 from datetime import datetime
 import logging
 import re
+import json
 
 import pdftotext
 
@@ -24,68 +25,6 @@ __version__ = '1.0.0'
 __email__ = 'mat@vyperhelp.com'
 __status__ = 'dev'
 
-####### REGEX DEFINITIONS #######
-# Examples of PDF raw text precede regular expressions:
-
-# Gross Pay Pre Tax Deductions Employee Taxes Post Tax Deductions Net Pay
-# Current 6,527.50 542.11 2,115.06 130.55 3,739.78
-_RE_GROSS_PAY = re.compile(r'Current (?P<gross_pay>[\d\,\.]{1,}) [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,}')
-_RE_NET_PAY = re.compile(r'Current [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} [\d\,\.]{1,} (?P<net_pay>[\d\,\.]{1,})')
-
-# Name Company Employee ID Pay Period Begin Pay Period End Check Date Check Number
-# Matthew Kramer Medtronic Inc 312713 03/12/2022 03/25/2022 04/01/2022
-_RE_CHECK_DATE = re.compile(r'Matthew Kramer Medtronic Inc 312713 \d\d\/\d\d\/\d\d\d\d \d\d\/\d\d\/\d\d\d\d (?P<check_date>\d\d\/\d\d\/\d\d\d\d)')
-
-# Note: trailing \d in each of these regex to make sure we don't match the YTD value if Amount is not present
-
-# Employee Taxes
-# Description Amount YTD
-# OASDI 397.13 2,794.53
-# Medicare 92.88 653.56
-# Federal Withholding 1,218.05 8,578.47
-# State Tax - MN 407.00 2,865.00
-_RE_OASDI = re.compile(r'OASDI (?P<oasdi>[\d\,\.]{1,}) \d')
-_RE_MEDICARE = re.compile(r'Medicare (?P<medicare>[\d\,\.]{1,}) \d')
-_RE_FED_WITHHOLD = re.compile(r'Federal Withholding (?P<fed_withhold>[\d\,\.]{1,}) \d')
-_RE_STATE_WITHHOLD = re.compile(r'State Tax - MN (?P<state_withhold>[\d\,\.]{1,}) \d')
-
-# Pre Tax Deductions
-# Description Amount YTD
-# 401(k) 391.65 2,741.55
-# Dental Pre 55.38 387.66
-# Medical Pre 95.08 665.56
-_RE_401K = re.compile(r'401\(k\) (?P<k401>[\d\,\.]{1,}) \d')
-_RE_DENTAL = re.compile(r'Dental Pre (?P<dental>[\d\,\.]{1,}) \d')
-_RE_MEDICAL = re.compile(r'Medical Pre (?P<medical>[\d\,\.]{1,}) \d')
-
-# Post Tax Deductions
-# Description Amount YTD
-# Fitness Center 4.62 4.62
-_RE_FITNESS = re.compile(r'Fitness Center (?P<fitness>[\d\,\.]{1,}) \d')
-
-# Fields that may be present
-_FIELDNAMES = [
-    'gross_pay',
-    'net_pay',
-    'check_date',
-    'oasdi',
-    'medicare',
-    'fed_withhold',
-    'state_withhold',
-    'k401',
-    'dental',
-    'medical',
-    'fitness'
-]
-
-# Fields that MUST be present
-_REQUIRED_FIELDNAMES = [
-    'gross_pay',
-    'net_pay',
-    'check_date'
-]
-####### END REGEX DEFINITIONS #######
-
 # Configure root level logger
 logger = logging.getLogger(__name__)
 ch = logging.StreamHandler()
@@ -95,13 +34,15 @@ logger.addHandler(ch)
 def amt(d, i):
     return float(d[i].replace(",",""))
 
-def write_results_to_file(payslips, outfile, format):
+def write_results_to_file(payslips, outfile, format, field_names, quiffen_categories):
     """
     Given a list of payslips, writes them to a file.
 
     :param payslips: List of dictionaries containing payslip data
     :param outfile: Destination
     :param format: choose QIF, CSV or JSON output, defaults to CSV
+    :param field_names: List of field names to include in the output
+    :param quiffen_categories: Dictionary of field names to Quiffen categories
     :return: None
     """
 
@@ -122,7 +63,7 @@ def write_results_to_file(payslips, outfile, format):
             writer = csv.DictWriter(
                 of,
                 quoting=csv.QUOTE_ALL,
-                fieldnames=_FIELDNAMES
+                fieldnames=field_names
             )
             writer.writeheader()
             rows = sorted(valid_slips,
@@ -145,46 +86,18 @@ def write_results_to_file(payslips, outfile, format):
         mdt = 'Medtronic'
 
         # Define categories for split
-        cat_salary = quiffen.Category(name = 'Salary')
-        cat_oasdi = quiffen.Category(name = 'Payroll - Social Security')
-        cat_medicare = quiffen.Category(name = 'Payroll - Medicare')
-        cat_fed_withhold = quiffen.Category(name = 'Payroll - Federal')
-        cat_state_withhold = quiffen.Category(name = 'Payroll - State')
-        cat_k401 = quiffen.Category(name = '[Medtronic 401k]')
-        cat_dental = quiffen.Category(name = 'Pre Tax - Dent Ins')
-        cat_medical = quiffen.Category(name = 'Pre Tax - Med Ins')
-        cat_fitness = quiffen.Category(name = 'Fitness')
-        qif.add_category(cat_salary)
-        qif.add_category(cat_oasdi)
-        qif.add_category(cat_medicare)
-        qif.add_category(cat_fed_withhold)
-        qif.add_category(cat_state_withhold)
-        qif.add_category(cat_k401)
-        qif.add_category(cat_dental)
-        qif.add_category(cat_medical)
-        qif.add_category(cat_fitness)
+        categories = {field: quiffen.Category(name=category) for field, category in quiffen_categories.items()}
+        for category in categories.values():
+            qif.add_category(category)
 
         # Create transaction for each payslip
         for s in valid_slips:
             d = datetime.strptime(s['check_date'], '%m/%d/%Y')
             subs = []
-            subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_salary, amount = amt(s, 'gross_pay')))
-            if 'oasdi' in s:
-                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_oasdi, amount = -amt(s, 'oasdi')))
-            if 'medicare' in s:
-                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_medicare, amount = -amt(s, 'medicare')))
-            if 'fed_withhold' in s:
-                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_fed_withhold, amount = -amt(s, 'fed_withhold')))
-            if 'state_withhold' in s:
-                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_state_withhold, amount = -amt(s, 'state_withhold')))
-            if 'k401' in s:
-                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_k401, amount = -amt(s, 'k401')))
-            if 'dental' in s:
-                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_dental, amount = -amt(s, 'dental')))
-            if 'medical' in s:
-                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_medical, amount = -amt(s, 'medical')))
-            if 'fitness' in s:
-                subs.append(quiffen.Transaction(payee = mdt, date = d, category = cat_fitness, amount = -amt(s, 'fitness')))
+            subs.append(quiffen.Transaction(payee = mdt, date = d, category = categories['gross_pay'], amount = amt(s, 'gross_pay')))
+            for field in field_names:
+                if field in s and field != 'gross_pay' and field != 'net_pay' and field != 'check_date':
+                    subs.append(quiffen.Transaction(payee = mdt, date = d, category = categories[field], amount = -amt(s, field)))
             tr = quiffen.Transaction(
                 payee = mdt, 
                 date = d,
@@ -193,6 +106,7 @@ def write_results_to_file(payslips, outfile, format):
             acc.add_transaction(tr, header='Bank')
 
         # write results to a file
+        print(qif)
         of.write(qif.to_qif())
 
     elif format == 'json':
@@ -225,57 +139,43 @@ def get_pdf_files(input_dir, pattern):
             (pattern, input_dir))
         sys.exit(1)
 
-def parse_payslip_page(lines):
+def load_patterns(pattern_file):
+    """
+    Load regex patterns from a JSON file.
+    :param pattern_file: Path to the JSON file containing regex patterns
+    :return: Dictionary of compiled regex patterns, list of field names, and list of required field names
+    """
+    with open(pattern_file, 'r') as f:
+        patterns = json.load(f)
+    compiled_patterns = {p['field_name']: re.compile(p['pattern']) for p in patterns}
+    field_names = [p['field_name'] for p in patterns]
+    required_field_names = [p['field_name'] for p in patterns if p['required']]
+    quiffen_categories = {p['field_name']: p['quiffen_category'] for p in patterns}
+    return compiled_patterns, field_names, required_field_names, quiffen_categories
+
+def parse_payslip_page(lines, patterns):
     """
     Parse PDF lines from a pdftotext page and return dictionary of payslip data.
     :param lines: List of lines to parse.
+    :param patterns: Dictionary of compiled regex patterns
     :return results: list of payslip data
     """
 
     results = {}
     for line in lines:
-
-        gross_pay = _RE_GROSS_PAY.search(line)
-        net_pay = _RE_NET_PAY.search(line)
-        check_date = _RE_CHECK_DATE.search(line)
-        oasdi = _RE_OASDI.search(line)
-        medicare = _RE_MEDICARE.search(line)
-        fed_withhold = _RE_FED_WITHHOLD.search(line)
-        state_withhold = _RE_STATE_WITHHOLD.search(line)
-        k401 = _RE_401K.search(line)
-        dental = _RE_DENTAL.search(line)
-        medical = _RE_MEDICAL.search(line)
-        fitness = _RE_FITNESS.search(line)
-
-        if gross_pay:
-            results['gross_pay'] = gross_pay.group('gross_pay')
-        if net_pay:
-            results['net_pay'] = net_pay.group('net_pay')
-        if check_date:
-            results['check_date'] = check_date.group('check_date')
-        if oasdi:
-            results['oasdi'] = oasdi.group('oasdi')
-        if medicare:
-            results['medicare'] = medicare.group('medicare')
-        if fed_withhold:
-            results['fed_withhold'] = fed_withhold.group('fed_withhold')
-        if state_withhold:
-            results['state_withhold'] = state_withhold.group('state_withhold')
-        if k401:
-            results['k401'] = k401.group('k401')
-        if dental:
-            results['dental'] = dental.group('dental')
-        if medical:
-            results['medical'] = medical.group('medical')
-        if fitness:
-            results['fitness'] = fitness.group('fitness')
+        for field, pattern in patterns.items():
+            match = pattern.search(line)
+            if match:
+                results[field] = match.group(field)
 
     return results
 
-def parse_payslip_doc(pdf):
+def parse_payslip_doc(pdf, patterns, required_field_names):
     """
     Parse PDF pages from pdftotext and return list of dictionary of payslip data.
     :param pdf: PDF object to parse.
+    :param patterns: Dictionary of compiled regex patterns
+    :param required_field_names: List of required field names
     :return results: list of payslip data
     """
 
@@ -294,9 +194,9 @@ def parse_payslip_doc(pdf):
     logger.info('Found %s pages', pgnum)
 
     for p in payslips:
-        p['results'] = parse_payslip_page(p['data'])
+        p['results'] = parse_payslip_page(p['data'], patterns)
 
-        if all (k in p['results'] for k in _REQUIRED_FIELDNAMES):
+        if all (k in p['results'] for k in required_field_names):
             p['status'] = 'valid'
             logger.debug('Valid payslip data found: %s' % p)
         else:
@@ -305,10 +205,12 @@ def parse_payslip_doc(pdf):
 
     return payslips
 
-def get_payslips_from_pdfs(pdfs):
+def get_payslips_from_pdfs(pdfs, patterns, required_field_names):
     """
     Convert list of PDFs to text and scan them for payslip data.
     :param pdfs: List of valid PDF files to be parsed
+    :param patterns: Dictionary of compiled regex patterns
+    :param required_field_names: List of required field names
     :return payslips: List of dictionaries of valid payslip data
     """
     payslips = []
@@ -320,7 +222,7 @@ def get_payslips_from_pdfs(pdfs):
             except Exception as e:
                 logger.debug('Exception scanning PDF document: %s' % str(e))
         if p:
-            payslips.extend(parse_payslip_doc(p))
+            payslips.extend(parse_payslip_doc(p, patterns, required_field_names))
 
     return payslips
 
@@ -333,14 +235,18 @@ def main(args):
     logger.info('- - - - P A Y S L I P - - - -')
     logger.debug('Invoked program with arguments: %s' % str(args))
 
+    patterns, field_names, required_field_names, quiffen_categories = load_patterns(args.pattern_file)
+
     pdfs = get_pdf_files(args.input_dir, args.pattern)
 
-    payslips = get_payslips_from_pdfs(pdfs)
+    payslips = get_payslips_from_pdfs(pdfs, patterns, required_field_names)
 
     write_results_to_file(
         payslips,
         args.output_file,
-        args.format.lower()
+        args.format.lower(),
+        field_names,
+        quiffen_categories
         )
 
     sys.exit()
@@ -391,6 +297,11 @@ def parse_args():
                         action='store_true',
                         help='Display verbose debugging output.')
 
+    # The pattern file to load regex patterns from.
+    parser.add_argument('-pf',
+                        '--pattern-file',
+                        required=True,
+                        help='The JSON file containing regex patterns.')
 
     args = parser.parse_args()
 

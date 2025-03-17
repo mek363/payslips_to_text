@@ -1,0 +1,68 @@
+[
+    {
+        "pattern": "Current (?P<gross_pay>[\\d,\\.]{1,}) [\\d,\\.]{1,} [\\d,\\.]{1,} [\\d,\\.]{1,} [\\d,\\.]{1,}",
+        "field_name": "gross_pay",
+        "required": true,
+        "quiffen_category": "Salary"
+    },
+    {
+        "pattern": "Current [\\d,\\.]{1,} [\\d,\\.]{1,} [\\d,\\.]{1,} [\\d,\\.]{1,} (?P<net_pay>[\\d,\\.]{1,})",
+        "field_name": "net_pay",
+        "required": true,
+        "quiffen_category": "Net Pay"
+    },
+    {
+        "pattern": "Matthew Kramer Medtronic Inc 312713 \\d\\d\\/\\d\\d\\/\\d\\d\\d\\d \\d\\d\\/\\d\\d\\/\\d\\d\\d\\d (?P<check_date>\\d\\d\\/\\d\\d\\/\\d\\d\\d\\d)",
+        "field_name": "check_date",
+        "required": true,
+        "quiffen_category": "Check Date"
+    },
+    {
+        "pattern": "OASDI (?P<oasdi>[\\d,\\.]{1,}) \\d",
+        "field_name": "oasdi",
+        "required": false,
+        "quiffen_category": "Payroll - Social Security"
+    },
+    {
+        "pattern": "Medicare (?P<medicare>[\\d,\\.]{1,}) \\d",
+        "field_name": "medicare",
+        "required": false,
+        "quiffen_category": "Payroll - Medicare"
+    },
+    {
+        "pattern": "Federal Withholding (?P<fed_withhold>[\\d,\\.]{1,}) \\d",
+        "field_name": "fed_withhold",
+        "required": false,
+        "quiffen_category": "Payroll - Federal"
+    },
+    {
+        "pattern": "State Tax - MN (?P<state_withhold>[\\d,\\.]{1,}) \\d",
+        "field_name": "state_withhold",
+        "required": false,
+        "quiffen_category": "Payroll - State"
+    },
+    {
+        "pattern": "401\\(k\\) (?P<k401>[\\d,\\.]{1,}) \\d",
+        "field_name": "k401",
+        "required": false,
+        "quiffen_category": "[Medtronic 401k]"
+    },
+    {
+        "pattern": "Dental Pre (?P<dental>[\\d,\\.]{1,}) \\d",
+        "field_name": "dental",
+        "required": false,
+        "quiffen_category": "Pre Tax - Dent Ins"
+    },
+    {
+        "pattern": "Medical Pre (?P<medical>[\\d,\\.]{1,}) \\d",
+        "field_name": "medical",
+        "required": false,
+        "quiffen_category": "Pre Tax - Med Ins"
+    },
+    {
+        "pattern": "Fitness Center (?P<fitness>[\\d,\\.]{1,}) \\d",
+        "field_name": "fitness",
+        "required": false,
+        "quiffen_category": "Fitness"
+    }
+]
