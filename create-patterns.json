@@ -1,0 +1,44 @@
+[
+    {
+        "pattern": "Gross Earnings (?P<gross_pay>[\\d,\\.]{1,}) [\\d,\\.]{1,}",
+        "field_name": "gross_pay",
+        "required": true,
+        "quiffen_category": "Salary - Anne"
+    },
+    {
+        "pattern": "NET PAY (?P<net_pay>[\\d,\\.]{1,}) [\\d,\\.]{1,}",
+        "field_name": "net_pay",
+        "required": true,
+        "quiffen_category": "Net Pay"
+    },
+    {
+        "pattern": "Check Date: (?P<check_date>\\d\\d\\/\\d\\d\\/\\d\\d)",
+        "field_name": "check_date",
+        "required": true,
+        "quiffen_category": "Check Date"
+    },
+    {
+        "pattern": "Social Security (?P<oasdi>[\\d,\\.]{1,}) [\\d,\\.]{1,}",
+        "field_name": "oasdi",
+        "required": false,
+        "quiffen_category": "Payroll Anne - Social Security"
+    },
+    {
+        "pattern": "Medicare (?P<medicare>[\\d,\\.]{1,}) [\\d,\\.]{1,}",
+        "field_name": "medicare",
+        "required": false,
+        "quiffen_category": "Payroll Anne - Medicare"
+    },
+    {
+        "pattern": "Fed Income Tax S 0 (?P<fed_withhold>[\\d,\\.]{1,}) [\\d,\\.]{1,}",
+        "field_name": "fed_withhold",
+        "required": false,
+        "quiffen_category": "Payroll Anne - Federal"
+    },
+    {
+        "pattern": "MN Income Tax S 0 (?P<state_withhold>[\\d,\\.]{1,}) [\\d,\\.]{1,}",
+        "field_name": "state_withhold",
+        "required": false,
+        "quiffen_category": "Payroll Anne - State"
+    }
+]

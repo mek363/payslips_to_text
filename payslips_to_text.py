@@ -34,6 +34,17 @@ logger.addHandler(ch)
 def amt(d, i):
     return float(d[i].replace(",",""))
 
+def parse_date(date_str):
+    """
+    Parse a date string that may have a 2-digit or 4-digit year.
+    :param date_str: Date string in the format MM/DD/YY or MM/DD/YYYY
+    :return: datetime object
+    """
+    try:
+        return datetime.strptime(date_str, '%m/%d/%Y')
+    except ValueError:
+        return datetime.strptime(date_str, '%m/%d/%y')
+
 def write_results_to_file(payslips, outfile, format, field_names, quiffen_categories, employer_name):
     """
     Given a list of payslips, writes them to a file.
@@ -68,7 +79,7 @@ def write_results_to_file(payslips, outfile, format, field_names, quiffen_catego
             )
             writer.writeheader()
             rows = sorted(valid_slips,
-                key=lambda d: datetime.strptime(d['check_date'], '%m/%d/%Y')
+                key=lambda d: parse_date(d['check_date'])
                 )
             writer.writerows(rows)
         else:
@@ -92,7 +103,7 @@ def write_results_to_file(payslips, outfile, format, field_names, quiffen_catego
 
         # Create transaction for each payslip
         for s in valid_slips:
-            d = datetime.strptime(s['check_date'], '%m/%d/%Y')
+            d = parse_date(s['check_date'])
             subs = []
             subs.append(quiffen.Transaction(payee = employer_name, date = d, category = categories['gross_pay'], amount = amt(s, 'gross_pay')))
             for field in field_names:
@@ -300,13 +311,15 @@ def parse_args():
     # The pattern file to load regex patterns from.
     parser.add_argument('-pf',
                         '--pattern-file',
-                        required=True,
+                        required=False,
+                        default='patterns.json',
                         help='The JSON file containing regex patterns.')
 
     # The employer name for the QIF transactions.
     parser.add_argument('-e',
                         '--employer-name',
-                        required=True,
+                        required=False,
+                        default='Unknown',
                         help='The name of the employer for the QIF transactions.')
 
     args = parser.parse_args()

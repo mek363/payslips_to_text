@@ -2,3 +2,5 @@
 *.pdf
 *.qif
 .DS_Store
+payslips.csv
+.~lock.payslips.csv#
