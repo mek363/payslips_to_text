@@ -40,5 +40,17 @@
         "field_name": "state_withhold",
         "required": false,
         "quiffen_category": "Payroll Anne - State"
+    },
+    {
+        "pattern": "Family Leave - MNPFL (?P<family_leave>[\\d,\\.]{1,}) [\\d,\\.]{1,}",
+        "field_name": "family_leave",
+        "required": false,
+        "quiffen_category": "Payroll Anne - Family Leave"
+    },
+    {
+        "pattern": "Medical Leave - MNPML (?P<medical_leave>[\\d,\\.]{1,}) [\\d,\\.]{1,}",
+        "field_name": "medical_leave",
+        "required": false,
+        "quiffen_category": "Payroll Anne - Medical Leave"
     }
 ]

@@ -64,5 +64,17 @@
         "field_name": "fitness",
         "required": false,
         "quiffen_category": "Fitness"
+    },
+    {
+        "pattern": "Family Leave - MNPFL (?P<family_leave>[\\d,\\.]{1,}) \\d",
+        "field_name": "family_leave",
+        "required": false,
+        "quiffen_category": "Payroll - Family Leave"
+    },
+    {
+        "pattern": "Medical Leave - MNPML (?P<medical_leave>[\\d,\\.]{1,}) \\d",
+        "field_name": "medical_leave",
+        "required": false,
+        "quiffen_category": "Payroll - Medical Leave"
     }
 ]

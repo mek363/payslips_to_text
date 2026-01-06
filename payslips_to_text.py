@@ -109,11 +109,26 @@ def write_results_to_file(payslips, outfile, format, field_names, quiffen_catego
             for field in field_names:
                 if field in s and field != 'gross_pay' and field != 'net_pay' and field != 'check_date':
                     subs.append(quiffen.Transaction(payee = employer_name, date = d, category = categories[field], amount = -amt(s, field)))
-            tr = quiffen.Transaction(
-                payee = employer_name, 
-                date = d,
-                amount = amt(s, 'net_pay'),
-                splits = subs)
+            try:
+                tr = quiffen.Transaction(
+                    payee = employer_name, 
+                    date = d,
+                    amount = amt(s, 'net_pay'),
+                    splits = subs)
+            except Exception as e:
+                print('Exception creating transaction:', e)
+                print('Date:', s.get('check_date', 'N/A'))
+                print('Net pay:', s.get('net_pay', 'N/A'))
+                print('Splits:')
+                for _split in subs:
+                    try:
+                        cat = getattr(_split, 'category', None)
+                        cname = getattr(cat, 'name', None) if cat else None
+                        amount = getattr(_split, 'amount', None)
+                        print(' - %s: %s' % (cname, amount))
+                    except Exception:
+                        print(' -', _split)
+                sys.exit(1)
             acc.add_transaction(tr, header='Bank')
 
         # write results to a file
